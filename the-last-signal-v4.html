@@ -1,0 +1,922 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>THE LAST SIGNAL</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=VT323&display=swap');
+
+*{margin:0;padding:0;box-sizing:border-box;}
+:root{
+  --red:#c0392b;--red2:#7b1f1f;--red3:#ff4444;
+  --green:#2ecc71;--green2:#1a4d32;
+  --amber:#e67e22;--amber2:#7d4210;
+  --blue:#3498db;
+  --bg:#030303;--panel:#080808;--border:#151515;
+  --text:#8a8a8a;--bright:#cccccc;
+}
+
+html,body{width:100%;height:100%;overflow:hidden;background:var(--bg);}
+body{
+  font-family:'Share Tech Mono',monospace;
+  color:var(--text);
+  cursor:none;
+  display:flex;align-items:center;justify-content:center;
+}
+
+/* CURSOR */
+#cur{position:fixed;width:20px;height:20px;pointer-events:none;z-index:9999;transform:translate(-50%,-50%);}
+#cur::before,#cur::after{content:'';position:absolute;}
+#cur::before{width:20px;height:20px;border:1px solid var(--red);border-radius:50%;box-shadow:0 0 8px var(--red),inset 0 0 4px rgba(192,57,43,0.2);}
+#cur::after{width:4px;height:4px;background:var(--red);border-radius:50%;top:50%;left:50%;transform:translate(-50%,-50%);box-shadow:0 0 6px var(--red);}
+
+/* CANVAS BG */
+#bgCanvas{position:fixed;inset:0;z-index:0;pointer-events:none;}
+
+/* SCANLINES */
+#scanlines{
+  position:fixed;inset:0;z-index:50;pointer-events:none;
+  background:repeating-linear-gradient(to bottom,rgba(255,255,255,0.012) 0,rgba(255,255,255,0.012) 1px,transparent 1px,transparent 3px);
+}
+
+/* VIGNETTE */
+#vignette{
+  position:fixed;inset:0;z-index:49;pointer-events:none;
+  background:radial-gradient(ellipse at 50% 50%,transparent 35%,rgba(0,0,0,0.92) 100%);
+}
+
+/* CHROMATIC ABERRATION overlay */
+#chroma{position:fixed;inset:0;z-index:51;pointer-events:none;opacity:0;mix-blend-mode:screen;}
+
+/* SCREENS */
+.screen{display:none;position:relative;z-index:10;}
+.screen.active{display:block;}
+
+/* ===== TITLE ===== */
+#title{text-align:center;padding:20px;}
+.t-eye{font-size:11px;color:#7a2a2a;letter-spacing:8px;text-transform:uppercase;margin-bottom:24px;animation:blink 2.5s step-end infinite;}
+.t-main{
+  font-family:'VT323',monospace;
+  font-size:clamp(64px,12vw,110px);
+  line-height:.9;
+  color:var(--red);
+  letter-spacing:2px;
+  text-shadow:0 0 30px rgba(192,57,43,0.7),0 0 80px rgba(192,57,43,0.2),2px 0 0 rgba(255,0,0,0.3),-2px 0 0 rgba(0,255,255,0.1);
+  animation:titleGlitch 6s infinite;
+  margin-bottom:6px;
+}
+@keyframes titleGlitch{
+  0%,92%,100%{text-shadow:0 0 30px rgba(192,57,43,0.7),0 0 80px rgba(192,57,43,0.2);}
+  93%{transform:translate(3px,0);text-shadow:3px 0 0 rgba(255,0,0,0.8),-3px 0 0 rgba(0,255,255,0.5);}
+  94%{transform:translate(-2px,0);}
+  95%{transform:translate(0);text-shadow:0 0 30px rgba(192,57,43,0.7);}
+  96%{transform:skewX(5deg);opacity:.8;}
+  97%{transform:skewX(0);opacity:1;}
+}
+.t-sub{font-size:10px;color:#666666;letter-spacing:6px;margin-bottom:36px;}
+#titleCanvas{display:block;margin:0 auto 32px;border:1px solid #0f0f0f;}
+.btn{
+  background:transparent;border:1px solid var(--red2);
+  color:var(--red);font-family:'Share Tech Mono',monospace;
+  font-size:13px;letter-spacing:4px;padding:13px 42px;
+  cursor:none;text-transform:uppercase;position:relative;overflow:hidden;
+  transition:color .2s,box-shadow .2s;
+}
+.btn::after{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(90deg,transparent,rgba(192,57,43,0.15),transparent);
+  transform:translateX(-100%);transition:transform .4s;
+}
+.btn:hover{color:#ff6b6b;border-color:var(--red);box-shadow:0 0 20px rgba(192,57,43,0.3),inset 0 0 20px rgba(192,57,43,0.05);}
+.btn:hover::after{transform:translateX(100%);}
+.btn-green{border-color:var(--green2);color:var(--green);}
+.btn-green:hover{color:#5dff9a;border-color:var(--green);box-shadow:0 0 20px rgba(46,204,113,0.3);}
+
+/* ===== GAME ===== */
+#game{width:min(900px,98vw);padding:12px;}
+.g-layout{display:grid;grid-template-rows:auto 1fr auto auto;gap:10px;height:calc(100vh - 24px);}
+
+/* HUD */
+.hud{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:8px;
+  border:1px solid var(--border);background:var(--panel);padding:10px 14px;
+  position:relative;overflow:hidden;
+}
+.hud::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:1px;
+  background:linear-gradient(90deg,transparent,var(--red2),transparent);
+  animation:hudScan 3s linear infinite;
+}
+@keyframes hudScan{0%{transform:scaleX(0) translateX(-100%);opacity:0;}50%{opacity:1;}100%{transform:scaleX(1) translateX(100%);opacity:0;}}
+
+.hud-item{display:flex;flex-direction:column;gap:3px;}
+.hud-lbl{font-size:9px;color:#2a2a2a;letter-spacing:3px;}
+.hud-val{font-size:14px;transition:color .4s;}
+.hud-val.ok{color:var(--green);}
+.hud-val.warn{color:var(--amber);}
+.hud-val.crit{color:var(--red);animation:critPulse .8s infinite;}
+@keyframes critPulse{50%{opacity:.2;}}
+.stat-bar{height:3px;background:#0a0a0a;border-radius:1px;overflow:hidden;margin-top:2px;}
+.stat-fill{height:100%;border-radius:1px;transition:width .5s ease,background .5s ease;}
+.hud-signal{grid-column:span 1;text-align:right;}
+.sig-ring{display:inline-block;width:36px;height:36px;position:relative;margin-bottom:2px;}
+.sig-ring svg{position:absolute;inset:0;animation:spinRing 4s linear infinite;}
+@keyframes spinRing{to{transform:rotate(360deg);}}
+
+/* CENTER AREA */
+.center{display:grid;grid-template-columns:1fr 200px;gap:10px;overflow:hidden;}
+
+/* LOG */
+.log-panel{
+  border:1px solid var(--border);background:var(--panel);
+  padding:12px;display:flex;flex-direction:column;
+  position:relative;overflow:hidden;
+}
+.log-panel::after{
+  content:'';position:absolute;bottom:0;left:0;right:0;height:40px;
+  background:linear-gradient(transparent,var(--panel));pointer-events:none;
+}
+.log-hdr{font-size:9px;color:#2a2a2a;letter-spacing:3px;border-bottom:1px solid #0d0d0d;padding-bottom:8px;margin-bottom:10px;}
+.log-entries{flex:1;overflow-y:auto;display:flex;flex-direction:column;gap:5px;scrollbar-width:none;}
+.log-entries::-webkit-scrollbar{display:none;}
+.log-entry{
+  font-size:12px;line-height:1.6;color:#666;
+  padding-left:10px;border-left:2px solid transparent;
+  animation:logIn .3s ease both;
+}
+@keyframes logIn{from{opacity:0;transform:translateX(-6px);}to{opacity:1;transform:none;}}
+.log-entry.new{color:var(--bright);border-left-color:var(--red2);}
+.log-entry.danger{color:var(--red);border-left-color:var(--red);animation:logIn .3s ease both,dangerShake .3s ease;}
+@keyframes dangerShake{0%,100%{transform:translateX(0);}25%{transform:translateX(-4px);}75%{transform:translateX(4px);}}
+.log-entry.success{color:var(--green);border-left-color:var(--green2);}
+.log-entry.warn{color:var(--amber);border-left-color:var(--amber2);}
+
+/* SIDE PANEL */
+.side{display:flex;flex-direction:column;gap:8px;}
+.pbox{border:1px solid var(--border);background:var(--panel);padding:10px;}
+.ptitle{font-size:9px;color:#7a7a7a;letter-spacing:3px;border-bottom:1px solid #0d0d0d;padding-bottom:6px;margin-bottom:8px;}
+
+/* CANVAS THREAT */
+#threatCanvas{display:block;width:100%;image-rendering:pixelated;}
+
+/* INVENTORY */
+.inv-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;}
+.inv-slot{
+  background:#050505;border:1px solid #0f0f0f;
+  padding:5px 7px;font-size:10px;color:#2a2a2a;
+  min-height:28px;display:flex;align-items:center;
+  transition:all .3s;
+}
+.inv-slot.has{color:var(--text);border-color:#1a1a1a;animation:itemIn .3s ease;}
+@keyframes itemIn{from{background:#0f1f0f;}to{background:#050505;}}
+
+/* LOCATION */
+#locText{font-size:11px;color:#888888;line-height:1.8;}
+
+/* ACTIONS */
+.actions{border:1px solid var(--border);background:var(--panel);padding:10px 12px;}
+.act-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;}
+.act-btn{
+  background:#050505;border:1px solid #111;
+  color:#888888;font-family:'Share Tech Mono',monospace;
+  font-size:9px;letter-spacing:1px;padding:9px 5px;
+  cursor:none;text-transform:uppercase;
+  transition:all .15s;text-align:center;line-height:1.5;
+  position:relative;overflow:hidden;
+}
+.act-btn::before{
+  content:'';position:absolute;inset:0;
+  background:radial-gradient(circle at 50% 120%,rgba(192,57,43,0.15),transparent 70%);
+  opacity:0;transition:opacity .2s;
+}
+.act-btn:hover:not(:disabled){color:var(--bright);border-color:#2a2a2a;background:#080808;}
+.act-btn:hover:not(:disabled)::before{opacity:1;}
+.act-btn.hi:hover:not(:disabled){color:var(--red);border-color:var(--red2);}
+.act-btn:disabled{opacity:.15;pointer-events:none;}
+.act-icon{font-size:15px;display:block;margin-bottom:2px;}
+
+/* GAMEOVER / WIN */
+#gameover,#winscreen{text-align:center;padding:30px;}
+.go-title{
+  font-family:'VT323',monospace;font-size:90px;
+  color:var(--red);text-shadow:0 0 40px rgba(192,57,43,0.6);
+  animation:titleGlitch 3s infinite,blink 4s step-end infinite;
+}
+.win-title{font-family:'VT323',monospace;font-size:80px;color:var(--green);text-shadow:0 0 40px rgba(46,204,113,0.5);}
+.go-sub{font-size:11px;color:#2a2a2a;letter-spacing:4px;margin:8px 0 32px;}
+.go-stats{
+  border:1px solid #111;background:#050505;
+  padding:18px 28px;display:inline-block;
+  margin-bottom:28px;text-align:left;min-width:260px;
+}
+.go-row{display:flex;justify-content:space-between;gap:40px;margin-bottom:6px;font-size:12px;color:#777;}
+.go-row span:last-child{color:var(--bright);}
+
+@keyframes blink{50%{opacity:.6;}}
+
+.log-icon-btn{background:transparent;border:1px solid #2a2a2a;color:#888;font-size:16px;padding:3px 10px;cursor:none;font-family:'Share Tech Mono',monospace;transition:all .2s;margin-left:5px;line-height:1.4;}
+.log-icon-btn:hover{color:var(--bright);border-color:#333;background:#0a0a0a;}
+.log-panel{position:relative;}
+#aboutOverlay{display:none;position:absolute;inset:0;z-index:100;background:rgba(2,3,3,0.97);border:1px solid #1a1a1a;padding:20px;overflow-y:auto;}
+#aboutOverlay.open{display:block;}
+.about-title{font-family:'VT323',monospace;font-size:36px;color:var(--red);margin-bottom:14px;letter-spacing:2px;}
+.about-close{position:absolute;top:12px;right:14px;background:transparent;border:1px solid #1a1a1a;color:#777;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;padding:4px 10px;cursor:none;transition:all .2s;}
+.about-close:hover{color:var(--red);}
+.about-body{font-size:11px;color:#777;line-height:2;letter-spacing:1px;}
+.about-body p{margin-bottom:10px;}
+.about-body .hl{color:#888;} .about-body .red{color:var(--red);} .about-body .green{color:var(--green);}
+#settingsBg{display:none;position:fixed;inset:0;z-index:199;background:rgba(0,0,0,0.6);}
+#settingsBg.open{display:block;}
+#settingsOverlay{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:200;background:#060606;border:1px solid #1e1e1e;padding:24px 28px;min-width:280px;}
+#settingsOverlay.open{display:block;}
+.settings-title{font-size:10px;color:#777;letter-spacing:4px;border-bottom:1px solid #0d0d0d;padding-bottom:8px;margin-bottom:18px;}
+.settings-close{position:absolute;top:10px;right:12px;background:transparent;border:none;color:#777;font-family:'Share Tech Mono',monospace;font-size:11px;cursor:none;transition:color .2s;}
+.settings-close:hover{color:var(--red);}
+.settings-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.settings-lbl{font-size:10px;color:#888;letter-spacing:2px;}
+.settings-action{background:transparent;border:1px solid #2a2a2a;color:#888;font-family:'Share Tech Mono',monospace;font-size:10px;letter-spacing:2px;padding:5px 14px;cursor:none;transition:all .2s;}
+.settings-action:hover{color:var(--bright);border-color:#333;}
+#nameEditRow{display:none;margin-bottom:14px;}
+#nameEditRow.open{display:flex;gap:6px;}
+#nameInput{background:#030303;border:1px solid #1a1a1a;color:var(--bright);font-family:'Share Tech Mono',monospace;font-size:10px;padding:5px 8px;flex:1;outline:none;}
+.name-save{background:transparent;border:1px solid var(--green2);color:var(--green);font-family:'Share Tech Mono',monospace;font-size:10px;padding:5px 10px;cursor:none;transition:all .2s;}
+</style>
+</head>
+<body>
+
+<div id="cur"></div>
+<canvas id="bgCanvas"></canvas>
+<div id="scanlines"></div>
+<div id="vignette"></div>
+<canvas id="chroma" style="display:none"></canvas>
+
+<!-- TITLE -->
+<div id="title" class="screen active">
+  <div class="t-eye" id="titleEye">⚠ EMERGENCY BROADCAST — SECTOR 7 ⚠</div>
+  <div class="t-main">THE LAST<br>SIGNAL</div>
+  <div class="t-sub">A SURVIVAL HORROR EXPERIENCE</div>
+  <canvas id="titleCanvas" width="520" height="120"></canvas>
+  <button class="btn" onclick="initializeSequence()">▶ INITIALIZE SEQUENCE</button>
+  <p style="margin-top:22px;font-size:10px;color:#555555;letter-spacing:2px;">SOMETHING IS IN THE DARK WITH YOU</p>
+</div>
+
+<!-- GAME -->
+<div id="game" class="screen">
+  <div class="g-layout">
+    <!-- HUD -->
+    <div class="hud">
+      <div class="hud-item">
+        <span class="hud-lbl">HEALTH</span>
+        <span class="hud-val ok" id="hHealth">100%</span>
+        <div class="stat-bar"><div class="stat-fill" id="bHealth" style="width:100%;background:#2ecc71"></div></div>
+      </div>
+      <div class="hud-item">
+        <span class="hud-lbl">POWER</span>
+        <span class="hud-val warn" id="hPower">67%</span>
+        <div class="stat-bar"><div class="stat-fill" id="bPower" style="width:67%;background:#e67e22"></div></div>
+      </div>
+      <div class="hud-item">
+        <span class="hud-lbl">SANITY</span>
+        <span class="hud-val ok" id="hSanity">100%</span>
+        <div class="stat-bar"><div class="stat-fill" id="bSanity" style="width:100%;background:#3498db"></div></div>
+      </div>
+      <div class="hud-item hud-signal">
+        <span class="hud-lbl">SIGNAL</span>
+        <span class="hud-val" id="hSignal" style="color:#555">0%</span>
+        <div class="stat-bar"><div class="stat-fill" id="bSignal" style="width:0%;background:#3498db"></div></div>
+      </div>
+    </div>
+
+    <!-- CENTER -->
+    <div class="center">
+      <div class="log-panel">
+        <div class="log-hdr" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>// SITUATION LOG ————————————</span>
+          <span>
+            <button class="log-icon-btn" onclick="toggleAbout()">?</button>
+            <button class="log-icon-btn" onclick="toggleSettings()">⚙</button>
+            <button class="log-icon-btn" onclick="clearLog()">✕</button>
+          </span>
+        </div>
+        <div class="log-entries" id="log"></div>
+      </div>
+      <div class="side">
+        <div class="pbox">
+          <div class="ptitle">// THREAT</div>
+          <canvas id="threatCanvas" height="90"></canvas>
+          <div id="threatLbl" style="font-size:10px;color:#2ecc71;margin-top:5px;letter-spacing:1px;">◉ LOW</div>
+        </div>
+        <div class="pbox">
+          <div class="ptitle">// INVENTORY</div>
+          <div class="inv-grid" id="inv"></div>
+        </div>
+        <div class="pbox">
+          <div class="ptitle">// LOCATION</div>
+          <div id="locText">BUNKER B — CORRIDOR 4<br><span style="color:#888;font-size:10px">EXITS: NORTH, EAST</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ACTIONS -->
+    <div class="actions">
+      <div class="act-grid">
+        <button class="act-btn hi" onclick="doAction('search')"><span class="act-icon">🔦</span>SEARCH</button>
+        <button class="act-btn" onclick="doAction('move')"><span class="act-icon">👣</span>MOVE</button>
+        <button class="act-btn" onclick="doAction('barricade')"><span class="act-icon">🚪</span>BARRICADE</button>
+        <button class="act-btn" onclick="doAction('heal')"><span class="act-icon">💊</span>HEAL</button>
+        <button class="act-btn" onclick="doAction('listen')"><span class="act-icon">👂</span>LISTEN</button>
+        <button class="act-btn hi" onclick="doAction('signal')"><span class="act-icon">📡</span>BOOST SIGNAL</button>
+        <button class="act-btn" onclick="doAction('hide')"><span class="act-icon">🫥</span>HIDE</button>
+        <button class="act-btn" onclick="doAction('distract')"><span class="act-icon">🔊</span>DISTRACT</button>
+      </div>
+    </div>
+  </div>
+  <div id="aboutOverlay">
+    <button class="about-close" onclick="toggleAbout()">✕ CLOSE</button>
+    <div class="about-title">THE LAST SIGNAL</div>
+    <div class="about-body">
+      <p class="hl">// SITUATION REPORT</p>
+      <p>You are the sole survivor of Bunker B, a classified underground facility in Sector 7. Three days ago, something breached the outer perimeter. The crew is gone. Power is failing. You don't know what it is — only that it hunts by sound and movement, and it is still inside with you.</p>
+      <p class="hl">// PRIMARY OBJECTIVE</p>
+      <p>Reach the communications array and <span class="green">boost the signal to 100%</span>. A rescue team is monitoring the frequency. Transmit. Survive.</p>
+      <p class="hl">// KNOWN THREATS</p>
+      <p><span class="red">IT</span> — designation unknown. Does not respond to light. Attracted to noise and movement. Becomes more aggressive as power fails. Has not left the bunker.</p>
+      <p class="hl">// SURVIVAL NOTES</p>
+      <p>Every action costs power. Power does not regenerate. When power hits zero, the doors seal, the air recyclers stop, and darkness takes everything.</p>
+      <p class="hl">// TRANSMISSION ENDS</p>
+      <p style="color:#555;">— LOG ENTRY 47 — <span id="survivorName">DR. MARA VOSS</span> — LAST KNOWN SURVIVOR</p>
+    </div>
+  </div>
+  <div id="settingsBg" onclick="toggleSettings()"></div>
+  <div id="settingsOverlay">
+    <button class="settings-close" onclick="toggleSettings()">✕</button>
+    <div class="settings-title">// SETTINGS</div>
+    <div class="settings-row">
+      <span class="settings-lbl">SURVIVOR NAME</span>
+      <button class="settings-action" onclick="toggleNameEdit()">✎ EDIT</button>
+    </div>
+    <div id="nameEditRow">
+      <input id="nameInput" type="text" maxlength="24" placeholder="DR. MARA VOSS" value="DR. MARA VOSS"/>
+      <button class="name-save" onclick="saveName()">SAVE</button>
+    </div>
+  </div>
+</div>
+
+<!-- GAME OVER -->
+<div id="gameover" class="screen">
+  <div class="go-title">YOU DIED</div>
+  <div class="go-sub">THE SIGNAL GOES SILENT</div>
+  <div class="go-stats">
+    <div class="go-row"><span>SURVIVED</span><span id="goTurns">—</span></div>
+    <div class="go-row"><span>ITEMS FOUND</span><span id="goItems">—</span></div>
+    <div class="go-row"><span>SIGNAL REACHED</span><span id="goSignal">—</span></div>
+    <div class="go-row"><span>CAUSE OF DEATH</span><span id="goCause">—</span></div>
+  </div>
+  <button class="btn" onclick="restartGame()">↺ TRY AGAIN</button>
+</div>
+
+<!-- WIN -->
+<div id="winscreen" class="screen">
+  <div class="win-title">SIGNAL SENT</div>
+  <div class="go-sub" style="color:#1a4d32">RESCUE TEAM INBOUND — YOU SURVIVED</div>
+  <div class="go-stats">
+    <div class="go-row"><span>SURVIVED</span><span id="winTurns">—</span></div>
+    <div class="go-row"><span>ITEMS FOUND</span><span id="winItems">—</span></div>
+    <div class="go-row"><span>HEALTH REMAINING</span><span id="winHealth">—</span></div>
+  </div>
+  <button class="btn btn-green" onclick="restartGame()">↺ PLAY AGAIN</button>
+</div>
+
+<script>
+// ─── STATE (declared first so animation loops can safely reference it) ───
+let state = { threat: 0, health: 100, power: 67, sanity: 100, signal: 0,
+  inventory: [], turns: 0, itemsFound: 0, loc: 0,
+  hideTurns: 0, barrTurns: 0, dead: false, won: false, deathCause: '—' };
+
+// ─── CURSOR ───
+const cur = document.getElementById('cur');
+document.addEventListener('mousemove',e=>{cur.style.left=e.clientX+'px';cur.style.top=e.clientY+'px';});
+
+// ─── BG CANVAS (particles + creature shadow) ───
+const bgC = document.getElementById('bgCanvas');
+const bgX = bgC.getContext('2d');
+let bgW, bgH;
+function resizeBg(){bgC.width=bgW=window.innerWidth;bgC.height=bgH=window.innerHeight;}
+resizeBg();
+window.addEventListener('resize',resizeBg);
+
+// Dust particles
+const particles=[];
+for(let i=0;i<120;i++) particles.push({
+  x:Math.random()*1920,y:Math.random()*1080,
+  vx:(Math.random()-.5)*.15,vy:(Math.random()-.5)*.1,
+  r:Math.random()*.8+.2,a:Math.random()*.15
+});
+
+// Creature entity on bg
+let creature={x:bgW*.15,y:bgH*.5,tx:bgW*.15,ty:bgH*.5,phase:0,alpha:0,size:80};
+
+function updateCreature(){
+  const t=state&&state.threat||0;
+  creature.alpha = t/100 * .35;
+  creature.size = 60 + t*.8;
+  creature.phase+=0.008;
+  // Wander toward player area
+  if(Math.random()<.01){
+    creature.tx=bgW*(.2+Math.random()*.6);
+    creature.ty=bgH*(.2+Math.random()*.6);
+  }
+  creature.x+=(creature.tx-creature.x)*.005;
+  creature.y+=(creature.ty-creature.y)*.005;
+}
+
+function drawBg(){
+  const t=state&&state.threat||0;
+  const now=Date.now();
+  bgX.fillStyle='#020308';
+  bgX.fillRect(0,0,bgW,bgH);
+  if(!bgC._stars){bgC._stars=[];for(let i=0;i<260;i++){bgC._stars.push({x:Math.random()*bgW,y:Math.random()*bgH,r:Math.random()*1.2+0.1,a:Math.random()*0.3+0.04,sp:Math.random()*0.0025+0.0004,off:Math.random()*Math.PI*2});}}
+  bgC._stars.forEach(s=>{const tw=s.a*(0.4+0.6*Math.sin(now*s.sp+s.off));bgX.beginPath();bgX.arc(s.x,s.y,s.r,0,Math.PI*2);bgX.fillStyle=`rgba(190,210,230,${tw})`;bgX.fill();});
+  // Ambient fog wisps
+  const fogAlpha=.02+t/100*.04;
+  for(let i=0;i<3;i++){
+    const gx=bgX.createRadialGradient(bgW*.3+Math.sin(Date.now()*.0003+i)*100,bgH*.5+Math.cos(Date.now()*.0002+i)*60,0,bgW*.3,bgH*.5,bgW*.5);
+    gx.addColorStop(0,`rgba(${50+i*10},0,0,${fogAlpha})`);
+    gx.addColorStop(1,'transparent');
+    bgX.fillStyle=gx;
+    bgX.fillRect(0,0,bgW,bgH);
+  }
+
+  // Creature shadow blob
+  updateCreature();
+  if(creature.alpha>0.005){
+    const cx=creature.x, cy=creature.y, cs=creature.size;
+    const blob=bgX.createRadialGradient(cx,cy,0,cx,cy,cs+50*Math.sin(creature.phase));
+    blob.addColorStop(0,`rgba(8,0,0,${creature.alpha})`);
+    blob.addColorStop(.4,`rgba(4,0,0,${creature.alpha*.5})`);
+    blob.addColorStop(1,'transparent');
+    bgX.fillStyle=blob;
+    bgX.beginPath();
+    // Organic blob shape
+    bgX.save();bgX.translate(cx,cy);
+    bgX.beginPath();
+    const pts=8;
+    for(let i=0;i<=pts;i++){
+      const ang=(i/pts)*Math.PI*2;
+      const rr=cs*(1+.3*Math.sin(creature.phase*3+i))*(1+.15*Math.cos(creature.phase*2+i*1.7));
+      const px=Math.cos(ang)*rr, py=Math.sin(ang)*rr;
+      i===0?bgX.moveTo(px,py):bgX.lineTo(px,py);
+    }
+    bgX.closePath();
+    bgX.fillStyle=blob;bgX.fill();
+    bgX.restore();
+  }
+
+  // Dust particles
+  particles.forEach(p=>{
+    p.x+=p.vx;p.y+=p.vy;
+    if(p.x<0)p.x=bgW;if(p.x>bgW)p.x=0;
+    if(p.y<0)p.y=bgH;if(p.y>bgH)p.y=0;
+    bgX.beginPath();bgX.arc(p.x,p.y,p.r,0,Math.PI*2);
+    bgX.fillStyle=`rgba(180,180,180,${p.a*(t/100+.1)})`;bgX.fill();
+  });
+
+  requestAnimationFrame(drawBg);
+}
+drawBg();
+
+// ─── TITLE CANVAS ───
+const tC=document.getElementById('titleCanvas');
+const tX=tC.getContext('2d');
+let titlePhase=0;
+function drawTitle(){
+  if(!document.getElementById('title').classList.contains('active')){return;}
+  tX.clearRect(0,0,520,120);
+  titlePhase+=.02;
+  // Waveform / static signal
+  tX.strokeStyle='rgba(192,57,43,0.25)';tX.lineWidth=1;
+  for(let x=0;x<520;x++){
+    const noise=Math.random()<.02?Math.random()*80-40:0;
+    const wave=Math.sin(x*.04+titlePhase)*12+Math.sin(x*.09-titlePhase*.7)*6+noise;
+    tX.beginPath();tX.moveTo(x,60);tX.lineTo(x,60+wave);tX.stroke();
+  }
+  // Pulse line
+  tX.strokeStyle=`rgba(192,57,43,${.4+.3*Math.sin(titlePhase*3)})`;tX.lineWidth=1.5;
+  tX.beginPath();
+  for(let x=0;x<520;x++){
+    const y=60+Math.sin(x*.05+titlePhase)*18*Math.exp(-Math.pow((x-260)/120,2));
+    x===0?tX.moveTo(x,y):tX.lineTo(x,y);
+  }
+  tX.stroke();
+  // Noise flickers
+  for(let i=0;i<6;i++){
+    if(Math.random()<.3){
+      const gx=Math.random()*520,gy=Math.random()*120;
+      tX.fillStyle=`rgba(192,57,43,${Math.random()*.15})`;
+      tX.fillRect(gx,gy,Math.random()*40+2,1);
+    }
+  }
+  requestAnimationFrame(drawTitle);
+}
+drawTitle();
+
+// ─── THREAT CANVAS ───
+const thC=document.getElementById('threatCanvas');
+const thX=thC&&thC.getContext('2d');
+let threatPhase=0;
+function drawThreat(){
+  if(!thC)return;
+  const w=thC.width=thC.offsetWidth||180, h=90;
+  thX.clearRect(0,0,w,h);
+  threatPhase+=.04;
+  const t=(state&&state.threat)||0;
+  const intensity=t/100;
+
+  // Grid
+  thX.strokeStyle='rgba(255,255,255,0.03)';thX.lineWidth=1;
+  for(let x=0;x<w;x+=20){thX.beginPath();thX.moveTo(x,0);thX.lineTo(x,h);thX.stroke();}
+  for(let y=0;y<h;y+=18){thX.beginPath();thX.moveTo(0,y);thX.lineTo(w,y);thX.stroke();}
+
+  // Heartbeat-style line
+  const col=t<35?'46,204,113':t<65?'230,126,18':'192,57,43';
+  thX.strokeStyle=`rgb(${col})`;thX.lineWidth=1.5;
+  thX.beginPath();
+  for(let x=0;x<w;x++){
+    const norm=x/w;
+    let y=h/2;
+    // Heartbeat spike pattern repeating
+    const cycle=(norm*4+threatPhase*.3)%1;
+    if(cycle<.05) y=h/2-intensity*30*Math.sin(cycle/.05*Math.PI);
+    else if(cycle<.12) y=h/2+intensity*12*Math.sin((cycle-.05)/.07*Math.PI);
+    else y=h/2+Math.sin(x*.2+threatPhase)*3*intensity+(Math.random()<.02?Math.random()*10-5:0);
+    x===0?thX.moveTo(x,y):thX.lineTo(x,y);
+  }
+  thX.stroke();
+
+  // Glow
+  if(intensity>.5){
+    const grd=thX.createLinearGradient(0,0,w,0);
+    grd.addColorStop(0,'transparent');
+    grd.addColorStop(.5,`rgba(${col},${intensity*.08})`);
+    grd.addColorStop(1,'transparent');
+    thX.fillStyle=grd;thX.fillRect(0,0,w,h);
+  }
+
+  if(document.getElementById('game').classList.contains('active')) requestAnimationFrame(drawThreat);
+}
+
+// ─── SCREEN SHAKE ───
+let shakeAmt=0;
+function shake(amt){shakeAmt=Math.max(shakeAmt,amt);}
+function applyShake(){
+  if(shakeAmt>.2){
+    const dx=(Math.random()-.5)*shakeAmt*2;
+    const dy=(Math.random()-.5)*shakeAmt*2;
+    document.getElementById('game').style.transform=`translate(${dx}px,${dy}px)`;
+    shakeAmt*=.85;
+    requestAnimationFrame(applyShake);
+  } else {
+    document.getElementById('game').style.transform='';
+  }
+}
+
+// ─── FLASH ───
+function flashRed(){
+  const fl=document.createElement('div');
+  fl.style.cssText='position:fixed;inset:0;background:rgba(150,0,0,0.25);z-index:200;pointer-events:none;animation:fadeFlash .4s ease forwards;';
+  const style=document.createElement('style');
+  style.textContent='@keyframes fadeFlash{to{opacity:0;}}';
+  document.head.appendChild(style);
+  document.body.appendChild(fl);
+  setTimeout(()=>fl.remove(),500);
+  shake(12);
+}
+
+// ─── FLOATING TEXT ───
+function floatText(msg, color='#c0392b'){
+  const el=document.createElement('div');
+  el.style.cssText=`position:fixed;left:50%;top:40%;transform:translateX(-50%);
+    color:${color};font-family:'Share Tech Mono',monospace;font-size:22px;
+    letter-spacing:4px;z-index:300;pointer-events:none;
+    animation:floatUp .9s ease forwards;`;
+  el.textContent=msg;
+  const style=document.createElement('style');
+  style.textContent='@keyframes floatUp{0%{opacity:0;transform:translateX(-50%) translateY(0);}30%{opacity:1;}100%{opacity:0;transform:translateX(-50%) translateY(-40px);}}';
+  document.head.appendChild(style);
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(),1000);
+}
+
+// ─── TYPEWRITER LOG ───
+function addLog(msg, type='new'){
+  const log=document.getElementById('log');
+  log.querySelectorAll('.log-entry.new').forEach(e=>e.classList.remove('new'));
+  const entry=document.createElement('div');
+  entry.className=`log-entry ${type}`;
+  entry.textContent='';
+  log.appendChild(entry);
+  let i=0;const full='> '+msg;
+  const iv=setInterval(()=>{
+    entry.textContent=full.slice(0,++i);
+    log.scrollTop=log.scrollHeight;
+    if(i>=full.length)clearInterval(iv);
+  },12);
+}
+
+// ─── GAME STATE ───
+const LOCS=[
+  {n:'BUNKER B — CORRIDOR 4',e:'NORTH, EAST'},
+  {n:'GENERATOR ROOM',e:'SOUTH, WEST'},
+  {n:'MEDICAL BAY',e:'NORTH, WEST'},
+  {n:'COMMS ROOM',e:'SOUTH'},
+  {n:'STORAGE WING',e:'EAST, NORTH'},
+  {n:'MAINTENANCE SHAFT',e:'WEST'},
+];
+const ITEMS=['Medkit','Flashlight','Flare','Wire Cutter','Signal Booster','Morphine','Barricade Kit','E-Radio'];
+const LOGS={
+  search_found:['Behind a collapsed locker, your hand closes around something useful.','A supply cache, half-buried. Someone left in a hurry.','You sweep the beam across shelves — then your fingers find something.'],
+  search_empty:['Nothing. Just old blood and the smell of rust.','The room has been picked clean. Or never had anything worth taking.','You find only a photograph. Someone\'s family. You leave it.'],
+  move:['You press against the wall and slide through the corridor.','The lights flicker twice as you move. You freeze. Silence.','Something skitters in the vents above. You move faster.','You navigate by feel more than sight. The air grows colder.'],
+  listen:['Breathing. Not yours. Close.','The static spikes. It knows you\'re here.','Claws on metal grating. Above you. Circling.','Too much silence. Wrong kind of silence.'],
+  hide:['You fold into a dark corner. It passes by the door.','Pressed behind a cabinet, holding your breath. It retreats.','You kill your light. You hear it sniff the air.'],
+  signal:['The antenna crackles. Signal strength improving.','A response — faint, but real.','You reroute power to the dish.'],
+  barricade:['You drag wreckage against the door.','The barricade buys time. That\'s all anything does now.'],
+  distract:['You throw debris down the hall. It takes the bait.','A loud clatter. It growls and moves toward the sound.'],
+  heal:['The morphine hits cold and fast. Pain dims to a hum.','You patch yourself up with shaking hands.'],
+  encounter:['IT FOUND YOU. Claws rake the wall beside your head.','Something lunges from the dark. You barely escape.','The door splinters. You scramble through a vent.'],
+};
+function rnd(a){return a[Math.floor(Math.random()*a.length)];}
+
+// ── AUDIO ──
+const SOUNDS = {
+  move:       new Audio('move.mp3'),
+  search:     new Audio('search.mp3'),
+  signal:     new Audio('signal.mp3'),
+  heal:       new Audio('heal.mp3'),
+  distract:   new Audio('distract.mp3'),
+  heartbeat:  new Audio('heartbeat.mp3'),
+  titleglitch:new Audio('titleglitch.mp3'),
+  theme:      new Audio('theme.mp3'),
+  intro:      new Audio('intro.mp3'),
+};
+SOUNDS.theme.loop = true;
+
+function playSound(name, vol=0.6){
+  const s = SOUNDS[name]; if(!s) return;
+  s.currentTime = 0; s.volume = vol;
+  s.play().catch(()=>{});
+}
+
+let _hbPlaying = false;
+function checkHeartbeat(){
+  if(state.power < 10 && !_hbPlaying){
+    _hbPlaying = true;
+    SOUNDS.heartbeat.currentTime = 0;
+    SOUNDS.heartbeat.volume = 0.8;
+    SOUNDS.heartbeat.play().catch(()=>{});
+    setTimeout(()=>{ SOUNDS.heartbeat.pause(); _hbPlaying = false; }, 4000);
+  }
+}
+
+let _themePlaying = false;
+function startTheme(){
+  if(_themePlaying) return;
+  SOUNDS.theme.volume = 0.5;
+  SOUNDS.theme.play().then(()=>{ _themePlaying=true; }).catch(()=>{});
+}
+function stopTheme(){
+  SOUNDS.theme.pause(); SOUNDS.theme.currentTime=0; _themePlaying=false;
+}
+
+// Try autoplay on load; if blocked, unlock on first interaction
+function unlockAudio(){
+  startTheme();
+  (function glitch(){
+    playSound('titleglitch', 0.6);
+    setTimeout(()=>{
+      if(document.getElementById('title').classList.contains('active')) glitch();
+    }, 6000);
+  })();
+}
+window.addEventListener('load', ()=>{
+  SOUNDS.theme.volume = 0.5;
+  SOUNDS.theme.play().then(()=>{ _themePlaying=true; }).catch(()=>{
+    document.addEventListener('click', unlockAudio, { once: true });
+    document.addEventListener('touchstart', unlockAudio, { once: true });
+  });
+});
+
+function initializeSequence(){
+  stopTheme();
+  const btn = document.querySelector('#title .btn');
+  if(btn){ btn.disabled=true; btn.textContent='▶ INITIALIZING...'; }
+  SOUNDS.intro.currentTime=0; SOUNDS.intro.volume=0.85;
+  let gone=false;
+  const go=()=>{ if(!gone){ gone=true; startGame(); } };
+  SOUNDS.intro.play().catch(go);
+  SOUNDS.intro.onended = go;
+  setTimeout(go, 2700);
+}
+
+function initState(){
+  state={health:100,power:67,sanity:100,threat:10,signal:0,
+    inventory:[],turns:0,itemsFound:0,loc:0,
+    hideTurns:0,barrTurns:0,dead:false,won:false,deathCause:'—'};
+}
+
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+  if(id==='game'){drawThreat();}
+}
+
+function startGame(){
+  stopTheme();
+  initState();
+  showScreen('game');
+  renderInv();updateHUD();
+  setTimeout(()=>{
+    addLog('The bunker door is sealed. Power is failing. One instruction: BOOST THE SIGNAL.','warn');
+    setTimeout(()=>addLog('Something else is already here with you.','danger'),1200);
+    setTimeout(()=>addLog('Survive. Transmit. Escape.','new'),2400);
+  },300);
+}
+function restartGame(){initState();showScreen('title');setTimeout(()=>drawTitle(),100);}
+
+function renderInv(){
+  const inv=document.getElementById('inv');inv.innerHTML='';
+  for(let i=0;i<4;i++){
+    const d=document.createElement('div');
+    if(state.inventory[i]){d.className='inv-slot has';d.textContent=state.inventory[i];}
+    else{d.className='inv-slot';d.textContent='—';}
+    inv.appendChild(d);
+  }
+}
+
+function updateHUD(){
+  const {health:h,power:p,sanity:s,signal:sg,threat:t}=state;
+  const setHud=(id,bid,val,crit,warn,okCol,warnCol,critCol)=>{
+    const el=document.getElementById(id);
+    el.textContent=val+'%';
+    el.className='hud-val '+(val<=crit?'crit':val<=warn?'warn':'ok');
+    const b=document.getElementById(bid);
+    b.style.width=val+'%';
+    b.style.background=val<=crit?critCol:val<=warn?warnCol:okCol;
+  };
+  setHud('hHealth','bHealth',h,25,50,'#2ecc71','#e67e22','#c0392b');
+  setHud('hPower','bPower',p,20,40,'#2ecc71','#e67e22','#c0392b');
+  setHud('hSanity','bSanity',s,25,50,'#3498db','#9b59b6','#8e44ad');
+  const sigEl=document.getElementById('hSignal');
+  sigEl.textContent=sg+'%';
+  sigEl.style.color=sg>=80?'#2ecc71':sg>=40?'#3498db':'#888';
+  document.getElementById('bSignal').style.width=sg+'%';
+  document.getElementById('bSignal').style.background=sg>=80?'#2ecc71':'#3498db';
+
+  // Threat label
+  const tl=document.getElementById('threatLbl');
+  if(t<35){tl.textContent='◉ LOW — IT HASN\'T FOUND YOU';tl.style.color='#2ecc71';}
+  else if(t<65){tl.textContent='◈ MODERATE — IT\'S SEARCHING';tl.style.color='#e67e22';}
+  else if(t<85){tl.textContent='◆ HIGH — IT\'S CLOSE';tl.style.color='#e74c3c';}
+  else{tl.textContent='⬛ CRITICAL — IT\'S HERE';tl.style.color='#c0392b';}
+
+  // Location
+  const loc=LOCS[state.loc%LOCS.length];
+  document.getElementById('locText').innerHTML=`${loc.n}<br><span style="color:#222;font-size:10px">EXITS: ${loc.e}</span><br><span style="color:#1a1a1a;font-size:10px">SIGNAL: ${sg}%</span>`;
+
+  // Sanity vignette pulse
+  if(s<40){
+    const v=document.getElementById('vignette');
+    v.style.background=`radial-gradient(ellipse at 50% 50%,transparent ${Math.max(5,s/2)}%,rgba(${s<20?'40,0,40':'0,0,0'},${.92+(1-s/40)*.15}) 100%)`;
+  }
+}
+
+function tick(){
+  state.power=Math.max(0,state.power-(2+Math.random()*2|0));
+  state.threat=Math.min(100,state.threat+(Math.random()*8|0));
+  state.turns++;
+  if(state.hideTurns>0){state.hideTurns--;state.threat=Math.max(0,state.threat-15);}
+  if(state.barrTurns>0){state.barrTurns--;state.threat=Math.max(0,state.threat-8);}
+  if(state.power<30||state.threat>70) state.sanity=Math.max(0,state.sanity-(5+Math.random()*5|0));
+
+  // Encounter
+  if(state.threat>=85&&Math.random()<0.5){
+    addLog(rnd(LOGS.encounter),'danger');
+    state.health=Math.max(0,state.health-(15+Math.random()*20|0));
+    state.threat=Math.max(0,state.threat-30);
+    flashRed();
+  }
+  if(state.power<=20&&state.power>17) addLog('The lights die. You are in complete darkness.','warn');
+  if(state.sanity<=25&&state.sanity>20) addLog('The walls breathe. You know they don\'t. You watch them anyway.','warn');
+  if(state.health<=0){state.deathCause='BLOOD LOSS';endGame(false);return;}
+  if(state.power<=0){state.deathCause='TOTAL POWER FAILURE';endGame(false);return;}
+  if(state.sanity<=0){state.deathCause='PSYCHOLOGICAL COLLAPSE';endGame(false);return;}
+  if(state.signal>=100){endGame(true);return;}
+  checkHeartbeat();
+  updateHUD();
+}
+
+
+function toggleAbout() { document.getElementById('aboutOverlay').classList.toggle('open'); }
+function clearLog() { document.getElementById('log').innerHTML = ''; }
+function toggleSettings() {
+  document.getElementById('settingsOverlay').classList.toggle('open');
+  document.getElementById('settingsBg').classList.toggle('open');
+}
+function toggleNameEdit() {
+  document.getElementById('nameEditRow').classList.toggle('open');
+  if (document.getElementById('nameEditRow').classList.contains('open')) document.getElementById('nameInput').focus();
+}
+function saveName() {
+  const val = document.getElementById('nameInput').value.trim().toUpperCase();
+  if (val) { const el = document.getElementById('survivorName'); if (el) el.textContent = val; }
+  document.getElementById('nameEditRow').classList.remove('open');
+}
+
+function doAction(action){
+  if(state.dead||state.won)return;
+  const btns=document.querySelectorAll('.act-btn');
+  btns.forEach(b=>b.disabled=true);
+  setTimeout(()=>btns.forEach(b=>b.disabled=false),700);
+
+  switch(action){
+    case 'search':
+      playSound('search', 0.5);
+      state.power=Math.max(0,state.power-3);
+      if(Math.random()<.55&&state.inventory.length<4){
+        const item=ITEMS[Math.floor(Math.random()*ITEMS.length)];
+        state.inventory.push(item);state.itemsFound++;
+        addLog(rnd(LOGS.search_found)+' Found: '+item+'.','success');
+        floatText('+'+item,'#2ecc71');renderInv();
+      } else addLog(rnd(LOGS.search_empty));
+      state.threat=Math.min(100,state.threat+10);break;
+    case 'move':
+      playSound('move', 0.55);
+      state.loc++;state.power=Math.max(0,state.power-4);
+      state.threat=Math.min(100,state.threat+5);
+      addLog(rnd(LOGS.move));break;
+    case 'listen':
+      addLog(rnd(LOGS.listen),state.threat>60?'danger':'warn');
+      state.power=Math.max(0,state.power-1);break;
+    case 'hide':
+      state.hideTurns=3;state.power=Math.max(0,state.power-2);
+      addLog(rnd(LOGS.hide));break;
+    case 'signal':{
+      playSound('signal', 0.6);
+      const boost=8+Math.floor(Math.random()*15);
+      state.signal=Math.min(100,state.signal+boost);
+      state.power=Math.max(0,state.power-8);
+      state.threat=Math.min(100,state.threat+20);
+      addLog(rnd(LOGS.signal)+' Signal now at '+state.signal+'%.',state.signal>=80?'success':'new');
+      floatText('SIGNAL +'+boost+'%','#3498db');
+      if(state.signal>=100){tick();return;}break;}
+    case 'barricade':
+      state.barrTurns=4;state.power=Math.max(0,state.power-3);
+      addLog(rnd(LOGS.barricade));break;
+    case 'distract':
+      playSound('distract', 0.65);
+      if(state.threat>30){
+        addLog(rnd(LOGS.distract),'success');
+        state.threat=Math.max(0,state.threat-35);floatText('THREAT ↓↓','#e67e22');
+      } else {
+        addLog('Nothing nearby. You made noise for nothing.','warn');
+        state.threat=Math.min(100,state.threat+10);
+      }
+      state.power=Math.max(0,state.power-2);break;
+    case 'heal':{
+      const hasMed=state.inventory.includes('Medkit')||state.inventory.includes('Morphine');
+      if(hasMed){
+        const item=state.inventory.includes('Morphine')?'Morphine':'Medkit';
+        playSound('heal', 0.5);
+        state.inventory.splice(state.inventory.indexOf(item),1);
+        state.health=Math.min(100,state.health+35);
+        addLog(rnd(LOGS.heal),'success');floatText('+35 HEALTH','#2ecc71');renderInv();
+      } else addLog('No medical supplies. Find some.','warn');break;}
+  }
+  tick();
+}
+
+function endGame(win){
+  if(win){
+    state.won=true;
+    addLog('SIGNAL TRANSMITTED. RESCUE INBOUND. YOU MADE IT.','success');
+    floatText('SIGNAL SENT','#2ecc71');
+    document.getElementById('winTurns').textContent=state.turns+' turns';
+    document.getElementById('winItems').textContent=state.itemsFound;
+    document.getElementById('winHealth').textContent=state.health+'%';
+    setTimeout(()=>showScreen('winscreen'),1800);
+  } else {
+    state.dead=true;
+    flashRed();
+    addLog('CONNECTION LOST.','danger');
+    floatText('YOU DIED','#c0392b');
+    document.getElementById('goTurns').textContent=state.turns+' turns';
+    document.getElementById('goItems').textContent=state.itemsFound;
+    document.getElementById('goSignal').textContent=state.signal+'%';
+    document.getElementById('goCause').textContent=state.deathCause;
+    setTimeout(()=>{flashRed();setTimeout(()=>showScreen('gameover'),600);},800);
+  }
+}
+</script>
+</body>
+</html>
